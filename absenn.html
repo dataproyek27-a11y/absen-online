@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Menu Absen Online</title>
+  <style>
+    body{font-family:Arial;background:#f4f6f9;margin:0;padding:0}
+    .box{max-width:900px;margin:18px auto;background:#fff;padding:18px;border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.08)}
+    h2{margin:0 0 8px}
+    .mini{font-size:13px;color:#555;margin-bottom:14px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+    .card{border:1px solid #e5e7eb;border-radius:14px;padding:14px;background:#fff}
+    .card h3{margin:0 0 6px}
+    .btn{display:block;width:100%;text-align:center;padding:12px;border-radius:12px;border:none;font-weight:bold;cursor:pointer}
+    .blue{background:#2563eb;color:#fff}
+    .green{background:#16a34a;color:#fff}
+    .gray{background:#64748b;color:#fff}
+    iframe{width:100%;height:78vh;border:1px solid #e5e7eb;border-radius:14px;margin-top:14px}
+    .top{display:flex;gap:10px;flex-wrap:wrap}
+    .top button{flex:1;min-width:150px}
+  </style>
+</head>
+<body>
+
+<div class="box">
+  <h2>✅ Menu Absen Online</h2>
+  <div class="mini">
+    Tinggal pilih fitur. (Online Firebase sudah aktif ✅)
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h3>📌 Absen Online (Scan QR)</h3>
+      <div class="mini">Scan QR → data masuk ke database online.</div>
+      <button class="btn blue" onclick="openPage('absen')">Buka Absen Online</button>
+    </div>
+
+    <div class="card">
+      <h3>🎯 QR Generator Banyak Nama</h3>
+      <div class="mini">Buat banyak QR sekaligus + download ZIP + print.</div>
+      <button class="btn green" onclick="openPage('qr')">Buka QR Generator</button>
+    </div>
+
+    <div class="card">
+      <h3>🧹 Reset Tampilan</h3>
+      <div class="mini">Kalau iframe blank / error, klik refresh.</div>
+      <button class="btn gray" onclick="refreshFrame()">Refresh</button>
+    </div>
+  </div>
+
+  <iframe id="frame" srcdoc="<h3 style='font-family:Arial;padding:16px'>Pilih menu di atas ✅</h3>"></iframe>
+</div>
+
+<script>
+  // ============ HALAMAN 1: ABSEN ONLINE ============
+  const absenOnlineHTML = `
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Absen Online QR</title>
+
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <style>
+    body{font-family:Arial;background:#f4f6f9;margin:0;padding:0}
+    .box{max-width:900px;margin:14px auto;background:#fff;padding:14px;border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.08)}
+    h2{margin:0 0 8px}
+    .mini{font-size:12px;color:#666;margin-bottom:10px}
+    input,select,button{width:100%;padding:12px;margin:6px 0;border-radius:10px;border:1px solid #ddd}
+    button{background:#2563eb;color:white;border:none;font-weight:bold;cursor:pointer}
+    button:hover{opacity:.92}
+    .row{display:flex;gap:10px;flex-wrap:wrap}
+    .row > div{flex:1;min-width:180px}
+    table{width:100%;border-collapse:collapse;margin-top:10px}
+    th,td{border-bottom:1px solid #eee;padding:10px;text-align:left;font-size:14px}
+    #reader{width:100%;border-radius:12px;overflow:hidden;border:1px solid #eee}
+    .danger{background:#ef4444}
+    .green{background:#16a34a}
+    .gray{background:#64748b}
+  </style>
+</head>
+<body>
+<div class="box">
+  <h2>✅ Absen Online (Scan QR)</h2>
+  <div class="mini">Format QR: <b>Nama|Bagian</b> contoh: <b>Andi|Proyek A</b></div>
+
+  <div class="row">
+    <div>
+      <label>ID Lokasi / Grup (wajib)</label>
+      <input id="groupId" placeholder="proyek-a / kelas-9a" value="proyek-a"/>
+    </div>
+    <div>
+      <label>Status</label>
+      <select id="status">
+        <option value="Hadir">Hadir</option>
+        <option value="Izin">Izin</option>
+        <option value="Sakit">Sakit</option>
+        <option value="Alfa">Alfa</option>
+      </select>
+    </div>
+    <div>
+      <label>Mode</label>
+      <select id="mode">
+        <option value="auto">Auto simpan saat scan</option>
+        <option value="manual">Tampilkan dulu (manual simpan)</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="row">
+    <div>
+      <label>Nama</label>
+      <input id="nama" placeholder="Nama"/>
+    </div>
+    <div>
+      <label>Bagian / Kelas</label>
+      <input id="bagian" placeholder="Bagian"/>
+    </div>
+  </div>
+
+  <button class="gray" onclick="startScan()">📷 Mulai Scan</button>
+  <button class="gray" onclick="stopScan()">⛔ Stop Scan</button>
+  <button onclick="simpan()">📌 Simpan Absen</button>
+  <button class="green" onclick="exportCSV()">⬇️ Export CSV</button>
+  <button class="danger" onclick="hapusSemua()">🗑️ Hapus Semua (Group ini)</button>
+
+  <h3>📷 Kamera</h3>
+  <div id="reader"></div>
+
+  <h3>📋 Data Absen</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>No</th><th>Nama</th><th>Bagian</th><th>Status</th><th>Tanggal</th><th>Jam</th>
+      </tr>
+    </thead>
+    <tbody id="tabel"></tbody>
+  </table>
+</div>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyAKE-Se9QspfiqQuBUk77LQxx5VkoMQLuw",
+    authDomain: "absen-c06e6.firebaseapp.com",
+    databaseURL: "https://absen-c06e6-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "absen-c06e6",
+    storageBucket: "absen-c06e6.firebasestorage.app",
+    messagingSenderId: "763655894855",
+    appId: "1:763655894855:web:a0d6f6e268ecdbed0c7e62"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  let html5QrCode = null;
+  let liveData = [];
+
+  function getGroup(){
+    return document.getElementById("groupId").value.trim().toLowerCase();
+  }
+
+  function now(){
+    const d = new Date();
+    return {
+      tanggal: d.toLocaleDateString("id-ID"),
+      jam: d.toLocaleTimeString("id-ID"),
+      ts: Date.now()
+    };
+  }
+
+  function parseQR(text){
+    const parts = text.split("|");
+    if(parts.length >= 2){
+      return { nama: parts[0].trim(), bagian: parts.slice(1).join("|").trim() };
+    }
+    return { nama: text.trim(), bagian: "-" };
+  }
+
+  async function simpan(){
+    const group = getGroup();
+    const nama = document.getElementById("nama").value.trim();
+    const bagian = document.getElementById("bagian").value.trim();
+    const status = document.getElementById("status").value;
+
+    if(!group) return alert("Group ID wajib diisi!");
+    if(!nama) return alert("Nama wajib diisi!");
+    if(!bagian) return alert("Bagian wajib diisi!");
+
+    const {tanggal, jam, ts} = now();
+    await db.ref("absen/" + group).push().set({ nama, bagian, status, tanggal, jam, ts });
+
+    document.getElementById("nama").value = "";
+    document.getElementById("bagian").value = "";
+  }
+
+  function render(){
+    const tb = document.getElementById("tabel");
+    tb.innerHTML = "";
+    liveData.forEach((x, i) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = "<td>"+(i+1)+"</td><td>"+x.nama+"</td><td>"+x.bagian+"</td><td>"+x.status+"</td><td>"+x.tanggal+"</td><td>"+x.jam+"</td>";
+      tb.appendChild(tr);
+    });
+  }
+
+  function listenRealtime(){
+    const group = getGroup();
+    if(!group) return;
+
+    db.ref("absen/" + group).orderByChild("ts").limitToLast(300).on("value", (snap) => {
+      const val = snap.val() || {};
+      const arr = Object.keys(val).map(k => val[k]);
+      arr.sort((a,b)=> (b.ts||0)-(a.ts||0));
+      liveData = arr;
+      render();
+    });
+  }
+
+  async function hapusSemua(){
+    const group = getGroup();
+    if(confirm("Yakin hapus semua data group: " + group + " ?")){
+      await db.ref("absen/" + group).remove();
+      alert("Data dihapus ✅");
+    }
+  }
+
+  function exportCSV(){
+    if(liveData.length === 0) return alert("Data kosong!");
+    let csv = "No,Nama,Bagian,Status,Tanggal,Jam\\n";
+    liveData.slice().reverse().forEach((x, i) => {
+      csv += (i+1)+",\\""+x.nama+"\\",\\""+x.bagian+"\\",\\""+x.status+"\\",\\""+x.tanggal+"\\",\\""+x.jam+"\\"\\n";
+    });
+    const blob = new Blob([csv], {type:"text/csv"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "absen_online.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function startScan(){
+    try{
+      if(!html5QrCode) html5QrCode = new Html5Qrcode("reader");
+      const cams = await Html5Qrcode.getCameras();
+      if(!cams || cams.length === 0) return alert("Kamera tidak ditemukan!");
+      const camId = cams[cams.length - 1].id;
+
+      await html5QrCode.start(
+        camId,
+        { fps: 10, qrbox: 250 },
+        async (decodedText) => {
+          const hasil = parseQR(decodedText);
+          document.getElementById("nama").value = hasil.nama;
+          document.getElementById("bagian").value = hasil.bagian;
+          if(document.getElementById("mode").value === "auto"){
+            await simpan();
+          }
+        },
+        () => {}
+      );
+    }catch(err){ alert("Gagal scan: " + err); }
+  }
+
+  async function stopScan(){
+    try{
+      if(html5QrCode){
+        await html5QrCode.stop();
+        await html5QrCode.clear();
+      }
+    }catch(e){}
+  }
+
+  document.getElementById("groupId").addEventListener("input", listenRealtime);
+  listenRealtime();
+<\/script>
+</body>
+</html>
+  `;
+
+  // ============ HALAMAN 2: QR BANYAK NAMA ============
+  const qrBanyakHTML = `
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>QR Banyak Nama</title>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <style>
+    body{font-family:Arial;background:#f4f6f9;margin:0;padding:0}
+    .box{max-width:1000px;margin:14px auto;background:#fff;padding:14px;border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.08)}
+    h2{margin:0 0 8px}
+    .mini{font-size:12px;color:#666;margin-bottom:10px}
+    textarea,input,button{width:100%;padding:12px;margin:6px 0;border-radius:10px;border:1px solid #ddd}
+    textarea{min-height:150px;resize:vertical}
+    button{background:#2563eb;color:white;border:none;font-weight:bold;cursor:pointer}
+    button:hover{opacity:.92}
+    .row{display:flex;gap:10px;flex-wrap:wrap}
+    .row > div{flex:1;min-width:220px}
+    .green{background:#16a34a}
+    .gray{background:#64748b}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));gap:12px;margin-top:10px}
+    .card{border:1px solid #e5e7eb;border-radius:14px;background:#fff;padding:12px}
+    .qrbox{display:flex;justify-content:center;align-items:center;padding:6px;border-radius:12px;background:#f8fafc;border:1px solid #eef2f7}
+    .name{font-weight:bold;margin:6px 0 0}
+    .bag{margin:2px 0;color:#444;font-size:13px}
+    .data{margin:6px 0 0;color:#666;font-size:11px;word-break:break-word}
+  </style>
+</head>
+<body>
+<div class="box">
+  <h2>🎯 QR Generator Banyak Nama</h2>
+  <div class="mini">Format per baris: <b>Nama|Bagian</b> contoh: <b>Andi|Proyek A</b></div>
+
+  <div class="row">
+    <div>
+      <label>Bagian default (opsional)</label>
+      <input id="defaultBagian" placeholder="Proyek A / Kelas 9A"/>
+    </div>
+    <div>
+      <label>Ukuran QR</label>
+      <input id="size" type="number" value="160" min="100" max="300"/>
+    </div>
+  </div>
+
+  <textarea id="list" placeholder="Contoh:
+Andi|Proyek A
+Budi|Proyek A
+Siti|Proyek A"></textarea>
+
+  <div class="row">
+    <div><button onclick="generate()">🎯 Buat Semua QR</button></div>
+    <div><button class="green" onclick="downloadZIP()">⬇️ Download ZIP</button></div>
+    <div><button class="gray" onclick="printAll()">🖨️ Print Massal</button></div>
+  </div>
+
+  <div class="mini" id="info">Belum ada QR dibuat.</div>
+  <div class="grid" id="grid"></div>
+</div>
+
+<script>
+  let qrItems = [];
+
+  function parseLines(){
+    const txt = document.getElementById("list").value.trim();
+    const defaultBagian = document.getElementById("defaultBagian").value.trim();
+    const lines = txt.split("\\n").map(x => x.trim()).filter(Boolean);
+    const items = [];
+    for(const line of lines){
+      if(line.includes("|")){
+        const parts = line.split("|");
+        const nama = parts[0].trim();
+        const bagian = parts.slice(1).join("|").trim();
+        if(nama && bagian) items.push({nama, bagian});
+      }else{
+        if(defaultBagian) items.push({nama: line.trim(), bagian: defaultBagian});
+      }
+    }
+    return items;
+  }
+
+  function safeFileName(str){
+    return str.replace(/[\\\\/:*?"<>|]/g, "-").replace(/\\s+/g, " ").trim();
+  }
+
+  function generate(){
+    const size = parseInt(document.getElementById("size").value || "160");
+    const items = parseLines();
+    if(items.length === 0) return alert("List kosong / format salah!");
+
+    qrItems = items.map(x => ({...x, data: x.nama + "|" + x.bagian, png:null}));
+
+    const grid = document.getElementById("grid");
+    grid.innerHTML = "";
+
+    qrItems.forEach((x, idx) => {
+      const card = document.createElement("div");
+      card.className = "card";
+
+      const qrDiv = document.createElement("div");
+      qrDiv.className = "qrbox";
+      const holder = document.createElement("div");
+      qrDiv.appendChild(holder);
+
+      card.appendChild(qrDiv);
+
+      const n = document.createElement("div"); n.className="name"; n.innerText=x.nama;
+      const b = document.createElement("div"); b.className="bag"; b.innerText=x.bagian;
+      const d = document.createElement("div"); d.className="data"; d.innerText=x.data;
+
+      card.appendChild(n); card.appendChild(b); card.appendChild(d);
+      grid.appendChild(card);
+
+      new QRCode(holder, { text:x.data, width:size, height:size });
+
+      setTimeout(() => {
+        const img = holder.querySelector("img");
+        if(img) qrItems[idx].png = img.src;
+      }, 250);
+    });
+
+    document.getElementById("info").innerText = "✅ Berhasil buat " + qrItems.length + " QR";
+  }
+
+  async function downloadZIP(){
+    if(qrItems.length === 0) return alert("Klik Buat Semua QR dulu!");
+    const zip = new JSZip();
+    const folder = zip.folder("QR-Absen");
+
+    for(const item of qrItems){
+      if(!item.png) return alert("Tunggu sebentar, QR belum siap semua.");
+      const base64 = item.png.split(",")[1];
+      folder.file(safeFileName(item.nama+" - "+item.bagian+".png"), base64, {base64:true});
+    }
+
+    const blob = await zip.generateAsync({type:"blob"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "QR-Absen.zip";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function printAll(){
+    if(qrItems.length === 0) return alert("Klik Buat Semua QR dulu!");
+    const size = parseInt(document.getElementById("size").value || "160");
+
+    let html = "<html><head><title>Print QR</title><style>"+
+      "body{font-family:Arial;margin:10px}"+
+      ".grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}"+
+      ".card{border:1px solid #ddd;border-radius:12px;padding:10px}"+
+      ".qr{display:flex;justify-content:center;padding:6px}"+
+      ".name{font-weight:bold;margin-top:6px}"+
+      ".bag{font-size:12px;color:#444}"+
+      "img{width:"+size+"px;height:"+size+"px}"+
+      "</style></head><body><div class='grid'>";
+
+    qrItems.forEach(x => {
+      html += "<div class='card'><div class='qr'>"+(x.png?("<img src='"+x.png+"'/>"):"")+
+              "</div><div class='name'>"+x.nama+"</div><div class='bag'>"+x.bagian+"</div></div>";
+    });
+
+    html += "</div></body></html>";
+
+    const w = window.open("", "", "width=1000,height=700");
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    w.print();
+    w.close();
+  }
+<\/script>
+</body>
+</html>
+  `;
+
+  function openPage(page){
+    const frame = document.getElementById("frame");
+    frame.srcdoc = (page === "absen") ? absenOnlineHTML : qrBanyakHTML;
+  }
+
+  function refreshFrame(){
+    const frame = document.getElementById("frame");
+    const current = frame.srcdoc;
+    frame.srcdoc = "";
+    setTimeout(()=> frame.srcdoc = current, 50);
+  }
+</script>
+
+</body>
+</html>
