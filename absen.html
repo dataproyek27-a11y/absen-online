@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Absen Online (Scan QR)</title>
+
+  <!-- QR Scanner -->
+  <script src="https://unpkg.com/html5-qrcode"></script>
+
+  <!-- Firebase compat -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <style>
+    body{font-family:Arial;background:#f4f6f9;margin:0;padding:0}
+    .box{max-width:900px;margin:16px auto;background:#fff;padding:16px;border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.08)}
+    h2{margin:0 0 6px}
+    .mini{font-size:12px;color:#666;margin-bottom:10px}
+    input,select,button{width:100%;padding:12px;margin:6px 0;border-radius:10px;border:1px solid #ddd}
+    button{background:#2563eb;color:white;border:none;font-weight:bold;cursor:pointer}
+    button:hover{opacity:.92}
+    .row{display:flex;gap:10px;flex-wrap:wrap}
+    .row > div{flex:1;min-width:180px}
+    table{width:100%;border-collapse:collapse;margin-top:10px}
+    th,td{border-bottom:1px solid #eee;padding:10px;text-align:left;font-size:14px}
+    #reader{width:100%;border-radius:12px;overflow:hidden;border:1px solid #eee}
+    .danger{background:#ef4444}
+    .green{background:#16a34a}
+    .gray{background:#64748b}
+    a.back{display:inline-block;margin:8px 0;text-decoration:none;color:#2563eb;font-weight:bold}
+  </style>
+</head>
+<body>
+<div class="box">
+  <a class="back" href="index.html">⬅ Kembali ke Menu</a>
+
+  <h2>✅ Absen Online (Scan QR)</h2>
+  <div class="mini">
+    Format QR: <b>Nama|Bagian</b> contoh: <b>Andi|Proyek A</b>
+  </div>
+
+  <div class="row">
+    <div>
+      <label>ID Lokasi / Grup (wajib)</label>
+      <input id="groupId" placeholder="proyek-a / kelas-9a" value="proyek-a"/>
+      <div class="mini">Semua HP harus pakai Group ID sama biar data gabung.</div>
+    </div>
+    <div>
+      <label>Status</label>
+      <select id="status">
+        <option value="Hadir">Hadir</option>
+        <option value="Izin">Izin</option>
+        <option value="Sakit">Sakit</option>
+        <option value="Alfa">Alfa</option>
+      </select>
+    </div>
+    <div>
+      <label>Mode</label>
+      <select id="mode">
+        <option value="auto">Auto simpan saat scan</option>
+        <option value="manual">Tampilkan dulu (manual simpan)</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="row">
+    <div>
+      <label>Nama</label>
+      <input id="nama" placeholder="Nama (hasil scan / manual)"/>
+    </div>
+    <div>
+      <label>Bagian / Kelas</label>
+      <input id="bagian" placeholder="Bagian / Kelas"/>
+    </div>
+  </div>
+
+  <button class="gray" onclick="startScan()">📷 Mulai Scan</button>
+  <button class="gray" onclick="stopScan()">⛔ Stop Scan</button>
+
+  <button onclick="simpan()">📌 Simpan Absen</button>
+  <button class="green" onclick="exportCSV()">⬇️ Export CSV</button>
+  <button class="danger" onclick="hapusSemua()">🗑️ Hapus Semua Data (Group ini)</button>
+
+  <h3>📷 Kamera Scanner</h3>
+  <div id="reader"></div>
+
+  <h3>📋 Data Absen (Online)</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>No</th>
+        <th>Nama</th>
+        <th>Bagian</th>
+        <th>Status</th>
+        <th>Tanggal</th>
+        <th>Jam</th>
+      </tr>
+    </thead>
+    <tbody id="tabel"></tbody>
+  </table>
+</div>
+
+<script>
+  // ✅ Firebase Config (punya kamu)
+  const firebaseConfig = {
+    apiKey: "AIzaSyAKE-Se9QspfiqQuBUk77LQxx5VkoMQLuw",
+    authDomain: "absen-c06e6.firebaseapp.com",
+    databaseURL: "https://absen-c06e6-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "absen-c06e6",
+    storageBucket: "absen-c06e6.firebasestorage.app",
+    messagingSenderId: "763655894855",
+    appId: "1:763655894855:web:a0d6f6e268ecdbed0c7e62"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  let html5QrCode = null;
+  let liveData = [];
+
+  function getGroup(){
+    return document.getElementById("groupId").value.trim().toLowerCase();
+  }
+
+  function now(){
+    const d = new Date();
+    return {
+      tanggal: d.toLocaleDateString("id-ID"),
+      jam: d.toLocaleTimeString("id-ID"),
+      ts: Date.now()
+    };
+  }
+
+  function parseQR(text){
+    const parts = text.split("|");
+    if(parts.length >= 2){
+      return { nama: parts[0].trim(), bagian: parts.slice(1).join("|").trim() };
+    }
+    return { nama: text.trim(), bagian: "-" };
+  }
+
+  async function simpan(){
+    const group = getGroup();
+    const nama = document.getElementById("nama").value.trim();
+    const bagian = document.getElementById("bagian").value.trim();
+    const status = document.getElementById("status").value;
+
+    if(!group) return alert("Group ID wajib diisi!");
+    if(!nama) return alert("Nama wajib diisi!");
+    if(!bagian) return alert("Bagian wajib diisi! Isi '-' kalau tidak ada.");
+
+    const {tanggal, jam, ts} = now();
+    await db.ref("absen/" + group).push().set({ nama, bagian, status, tanggal, jam, ts });
+
+    document.getElementById("nama").value = "";
+    document.getElementById("bagian").value = "";
+  }
+
+  function render(){
+    const tb = document.getElementById("tabel");
+    tb.innerHTML = "";
+    liveData.forEach((x, i) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${i+1}</td>
+        <td>${x.nama}</td>
+        <td>${x.bagian}</td>
+        <td>${x.status}</td>
+        <td>${x.tanggal}</td>
+        <td>${x.jam}</td>
+      `;
+      tb.appendChild(tr);
+    });
+  }
+
+  function listenRealtime(){
+    const group = getGroup();
+    if(!group) return;
+
+    db.ref("absen/" + group)
+      .orderByChild("ts")
+      .limitToLast(300)
+      .on("value", (snap) => {
+        const val = snap.val() || {};
+        const arr = Object.keys(val).map(k => val[k]);
+        arr.sort((a,b)=> (b.ts||0)-(a.ts||0));
+        liveData = arr;
+        render();
+      });
+  }
+
+  async function hapusSemua(){
+    const group = getGroup();
+    if(!group) return alert("Group ID kosong!");
+    if(confirm("Yakin hapus semua data absen untuk group: " + group + " ?")){
+      await db.ref("absen/" + group).remove();
+      alert("Data group dihapus ✅");
+    }
+  }
+
+  function exportCSV(){
+    if(liveData.length === 0){
+      alert("Data kosong!");
+      return;
+    }
+
+    let csv = "No,Nama,Bagian,Status,Tanggal,Jam\n";
+    liveData.slice().reverse().forEach((x, i) => {
+      csv += `${i+1},"${x.nama}","${x.bagian}","${x.status}","${x.tanggal}","${x.jam}"\n`;
+    });
+
+    const blob = new Blob([csv], {type:"text/csv"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "absen_online.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function startScan(){
+    try{
+      if(!html5QrCode){
+        html5QrCode = new Html5Qrcode("reader");
+      }
+
+      const cameras = await Html5Qrcode.getCameras();
+      if(!cameras || cameras.length === 0){
+        alert("Kamera tidak ditemukan!");
+        return;
+      }
+
+      const camId = cameras[cameras.length - 1].id;
+
+      await html5QrCode.start(
+        camId,
+        { fps: 10, qrbox: 250 },
+        async (decodedText) => {
+          const hasil = parseQR(decodedText);
+          document.getElementById("nama").value = hasil.nama;
+          document.getElementById("bagian").value = hasil.bagian;
+
+          if(document.getElementById("mode").value === "auto"){
+            await simpan();
+          }
+        },
+        () => {}
+      );
+    }catch(err){
+      alert("Gagal scan: " + err);
+    }
+  }
+
+  async function stopScan(){
+    try{
+      if(html5QrCode){
+        await html5QrCode.stop();
+        await html5QrCode.clear();
+      }
+    }catch(e){}
+  }
+
+  document.getElementById("groupId").addEventListener("input", listenRealtime);
+  listenRealtime();
+</script>
+</body>
+</html>
